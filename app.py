@@ -8,9 +8,11 @@ from flask import Flask, request, jsonify
 from werkzeug.exceptions import HTTPException
 
 # Import our custom modules
-from logger import logger, perf_logger
+from logger import logger
 from models import db, User, Task, init_db
 import utils
+
+ALLOW_FULL_EXECUTION_INFO = False
 
 # Initialize Flask app
 app = Flask(__name__)
@@ -19,34 +21,6 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 # Initialize database with our app
 init_db(app)
-
-# Request timing middleware
-@app.before_request
-def start_timer():
-    request.start_time = time.time()
-
-@app.after_request
-def log_request(response):
-    request_duration = time.time() - request.start_time
-    request_id = str(uuid.uuid4())[:8]
-    
-    # Log request details
-    log_data = {
-        'request_id': request_id,
-        'method': request.method,
-        'path': request.path,
-        'status': response.status_code,
-        'duration': round(request_duration * 1000, 2),  # in ms
-        'ip': request.remote_addr
-    }
-    
-    # Log slow requests (>500ms) with higher severity
-    if request_duration > 0.5:
-        perf_logger.warning(f"SLOW REQUEST: {json.dumps(log_data)}")
-    else:
-        perf_logger.info(json.dumps(log_data))
-    
-    return response
 
 # Routes
 @app.route('/')
@@ -69,7 +43,7 @@ def get_users():
     try:
         return utils.get_users()
     except Exception as e:
-        logger.error(f"Error retrieving users: {str(e)}", exc_info=True)
+        logger.error(f"Error retrieving users: {str(e)}", exc_info=ALLOW_FULL_EXECUTION_INFO)
         return jsonify({"error": "Failed to retrieve users"}), 500
 
 @app.route('/api/users', methods=['POST'])
@@ -88,7 +62,7 @@ def create_user():
     
     except Exception as e:
         db.session.rollback()
-        logger.error(f"Error creating user: {str(e)}", exc_info=True)
+        logger.error(f"Error creating user: {str(e)}", exc_info=ALLOW_FULL_EXECUTION_INFO)
         return jsonify({"error": "Failed to create user"}), 500
 
 @app.route('/api/users/<username>/tasks', methods=['GET'])
@@ -96,7 +70,7 @@ def get_user_tasks(username):
     try:
         return jsonify(utils.get_user_tasks(username=username))
     except Exception as e:
-        logger.error(f"Error retrieving tasks for user {username}: {str(e)}", exc_info=True)
+        logger.error(f"Error retrieving tasks for user {username}: {str(e)}", exc_info=ALLOW_FULL_EXECUTION_INFO)
         return jsonify({"error": "Failed to retrieve tasks"}), 500
 
 @app.route('/api/users/<username>/tasks', methods=['POST'])
@@ -122,7 +96,7 @@ def create_task(username: str):
     
     except Exception as e:
         db.session.rollback()
-        logger.error(f"Error creating task for user {username}: {str(e)}", exc_info=True)
+        logger.error(f"Error creating task for user {username}: {str(e)}", exc_info=ALLOW_FULL_EXECUTION_INFO)
         return jsonify({"error": "Failed to create task"}), 500
     
 @app.route('/api/users/<username>/task/<task_id>/complete', methods=['POST'])
@@ -131,7 +105,7 @@ def complete_task(username: str, task_id: int) :
         return jsonify(utils.complete_task(username, task_id))
     except Exception as e:
         db.session.rollback()
-        logger.error(f"Error completing task for user {username}: {str(e)}", exc_info=True)
+        logger.error(f"Error completing task for user {username}: {str(e)}", exc_info=ALLOW_FULL_EXECUTION_INFO)
         return jsonify({"error": "Failed to complete task"}), 500
 
 # Error handlers
@@ -142,7 +116,7 @@ def not_found(error):
 
 @app.errorhandler(500)
 def server_error(error):
-    logger.error(f"500 error: {str(error)}", exc_info=True)
+    logger.error(f"500 error: {str(error)}", exc_info=ALLOW_FULL_EXECUTION_INFO)
     return jsonify({"error": "Internal server error"}), 500
 
 @app.errorhandler(Exception)
@@ -152,7 +126,7 @@ def handle_exception(e):
         return e
     
     # Log unexpected errors
-    logger.error(f"Unhandled exception: {str(e)}", exc_info=True)
+    logger.error(f"Unhandled exception: {str(e)}", exc_info=ALLOW_FULL_EXECUTION_INFO)
     return jsonify({"error": "An unexpected error occurred"}), 500
 
 if __name__ == '__main__':
